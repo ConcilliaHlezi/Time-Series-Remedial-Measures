@@ -1,0 +1,184 @@
+---
+title: "Time-Series-Remedial-Measures"
+author: "Concillia Mpofu & Connor Cabrey"
+date: '2022-04-17'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(broom)
+library(car)
+```
+
+First Differences model 
+```{r}
+#Read the data
+blaisdell <- read.delim("blaisdell.txt")
+```
+
+```{r}
+blaisdell <- read.delim("blaisdell.txt")
+attach(blaisdell)
+
+#Create a linear regression model 
+sl_model <- lm(comsales ~ indsales)
+summary(sl_model)
+
+#conduct a dwt model
+dwt(lm(comsales ~ indsales))
+
+#The Durbin-Watson test gives values that are between 0 and 4 with the following meaning:
+#2 is no autocorrelation.
+#0 to <2 is positive autocorrelation (common in time series data).
+#2 to 4 is negative autocorrelation (less common in time series data).
+
+
+# creating time-series objects
+y.ts <- ts(comsales)
+x.ts <- ts(indsales)
+
+#computing a lagged version of a time series, shifting the time base back by a given number of observations
+#the value of the variable at t-1
+lag1y <- stats::lag(y.ts, -1)
+lag1x <- stats::lag(x.ts, -1)
+
+#qplot(data = blaisdell, x=lag1x, y=lag1y, geom = "point")
+
+# First Differences Procedure
+#Calculate a transformed response variable, Y_fd = comsales-LAG(comsales,1)
+y.fd = y.ts-lag1y
+#Calculate a transformed predictor variable, X_fd = indsales-LAG(indsales,1)
+x.fd = x.ts-lag1x
+
+#Examine whether the first differences procedure has removed the auto correlations using the Durbin-Watson Test
+dwt(lm(y.fd ~ x.fd))
+
+#In this model the DW statistic for the first differences regression model is 1.748. This indicates uncorrelated error terms. This means that the first differences model has successfully eliminated the autocorrelation.
+
+#Fit a simple linear regression model with response Y_fd and predictor X_fd and no intercept. 
+fd_model <- lm(y.fd ~ x.fd -1)
+summary(fd_model)
+
+#Calculate the estimated intercept parameter
+#Find the sample mean of comsales and indsales 
+mean(comsales)-coef(fd_model)[1]*mean(indsales)
+
+##model
+#predicted comsales = -0.303 + 0.16849 indsales
+
+detach(blaisdell)
+
+
+
+```
+
+
+```{r}
+#Viewing the data after eliminating the lag
+qplot(data = blaisdell, x=lag1x, y=lag1y, geom = "point")
+```
+
+```{r}
+#Viewing data before eliminating the lag
+qplot(data = blaisdell, x=time, y=comsales, geom = "point")
+```
+
+Cochrane Orcutt Procedure
+```{r}
+#install.packages("orcutt")
+library(orcutt)
+
+##Fit the linear model 
+lm = lm(comsales ~ indsales, data=blaisdell) 
+lm
+
+```
+
+
+```{r}
+#Run the cochrane orcutt model
+modelco<-cochrane.orcutt(lm, convergence = 8, max.iter=1000)
+modelco
+```
+
+```{r}
+#Save the rho 
+rho<- modelco$rho
+
+#Transform the data 
+y.trans<- blaisdell$comsales[-1]-blaisdell$comsales[-20]*rho
+x.trans<- blaisdell$indsales[-1]-blaisdell$indsales[-20]*rho
+#1 is the lag in the time
+#20 is the number of observations 
+
+
+#Fit a linear model with the transformed variables 
+modelcorho<- lm(y.trans~x.trans)
+summary(modelcorho)
+```
+
+```{r}
+#Run the Durbin-Watson Test to check correlation 
+dwtest(modelcorho)
+```
+
+```{r}
+
+attach(blaisdell)
+
+res.ts <- ts(residuals(sl_model))
+lag1res <- stats::lag(res.ts, -1)
+lagdata1 <- ts.intersect(res.ts, lag1res)
+
+acp <- coef(lm(res.ts ~ lag1res -1, data=lagdata1)) # 0.6311636
+
+y.ts <- ts(comsales)
+x.ts <- ts(indsales)
+
+lag1y <- stats::lag(y.ts, -1)
+lag1x <- stats::lag(x.ts, -1)
+
+y.co <- y.ts-acp*lag1y
+x.co <- x.ts-acp*lag1x
+
+model.2 <- lm(y.co ~ x.co)
+summary(model.2)
+#              Estimate Std. Error t value Pr(>|t|)    
+# (Intercept) -0.394111   0.167230  -2.357   0.0307 *  
+# x.co         0.173758   0.002957  58.767   <2e-16 ***
+ 
+dwt(model.2)
+# lag Autocorrelation D-W Statistic p-value
+#   1       0.1473569      1.650248   0.306
+# Alternative hypothesis: rho != 0
+ 
+b0 <- coef(model.2)[1]/(1-acp) # -1.068524
+sqrt(vcov(model.2)[1,1])/(1-acp) # se = 0.4533986
+b1 <- coef(model.2)[2] # 0.1737583
+
+```
+
+
+```{r}
+attach(blaisdell)
+
+#data(blaisdell, package="orcutt") 
+lm = lm(comsales ~ indsales, data=blaisdell)
+coch = cochrane.orcutt(lm) 
+coch
+#residuals(cochcoch = cochrane.orcutt(lm) )
+
+```
+
+```{r}
+
+coch = cochrane.orcutt(lm)
+```
+
+
+
